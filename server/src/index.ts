@@ -14,6 +14,7 @@ import {
 import { User, Content, Image, Tag } from './entity';
 const secret = require('./config/jwt.json');
 const password = require('./config/google.json');
+const s3key = require('./config/s3.json');
 
 const hash = (password) => {
     return crypto.createHmac('sha256', secret.secret)
@@ -127,7 +128,7 @@ createConnection()
                                 //태그 추가
                                 const tagRepository = getRepository(Tag.Tag);
                                 const tag = tagRepository.create();
-                                tag.tagName = req.body.imgName;
+                                tag.tagName = req.body.tagName;
                                 tag.content = result.identifiers[0].id;
                                 tagRepository.save(tag);
                             }).then(result => res.sendStatus(201))
@@ -390,6 +391,44 @@ createConnection()
                             .catch((err) => console.log(err));
                     }
                 );
+
+                //사진 업로드 구현
+                const aws = require('aws-sdk');
+                const multer = require('multer');
+                const multerS3 = require('multer-s3');
+                const moment = require('moment');
+                
+                const s3 = new aws.S3({
+                  accessKeyId: s3key.accessKeyId, // 생성한 s3의 accesskey 
+                  secretAccessKey: s3key.secretAccessKey, // 생성한 s3의 secret key 
+                  region: 'ap-northeast-2'  // 지역설정 
+                })
+                
+                const storage = multerS3({
+                  s3: s3,
+                  bucket: 'image-test-file', // s3 생성시 버킷명
+                  acl: 'public-read',   // 업로드 된 데이터를 URL로 읽을 때 설정하는 값입니다. 업로드만 한다면 필요없습니다.
+                  metadata: function (req, file, cb) {
+                    cb(null, {fieldName: file.fieldname}); // 파일 메타정보를 저장합니다.
+                  },
+                  key: function (req, file, cb) {
+                    cb(null, moment().format('YYYYMMDDHHmmss') + "_" + file.originalname) // key... 저장될 파일명과 같이 해봅니다.
+                  }
+                })
+                
+                const upload = multer({ storage: storage }).single("img");
+
+                this.app.post('/upload', async (req: express.Request, res: express.Response, next:express.NextFunction) => {
+                    upload(req, res, function(err) {
+                      if (err instanceof multer.MulterError) {
+                        return next(err);
+                      } else if (err) {
+                        return next(err);
+                      }
+                      return res.status(200);
+                    });
+                  });
+
 
                 server.listen(port, () => console.log(`Listening on port ${port}`))
 
